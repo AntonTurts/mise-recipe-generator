@@ -17,18 +17,29 @@ export default function IngredientsPage() {
     'Carrots', 'Bell Peppers', 'Mushrooms', 'Spinach', 'Broccoli'
   ]);
 
-  // Load saved ingredients on initial render
+  // Load saved ingredients on initial render but only if the user hasn't generated recipes yet
   useEffect(() => {
-    const savedIngredients = localStorage.getItem('selectedIngredients');
-    if (savedIngredients) {
-      try {
-        setIngredients(JSON.parse(savedIngredients));
-      } catch (e) {
-        console.error('Failed to parse saved ingredients', e);
+    // Check if we have recipes in session storage - if so, user has already generated recipes
+    const hasGeneratedRecipes = !!sessionStorage.getItem('generatedRecipes');
+    
+    // Only load previously selected ingredients if recipes haven't been generated yet
+    if (!hasGeneratedRecipes) {
+      const savedIngredients = localStorage.getItem('selectedIngredients');
+      if (savedIngredients) {
+        try {
+          setIngredients(JSON.parse(savedIngredients));
+        } catch (e) {
+          console.error('Failed to parse saved ingredients', e);
+          // Clear invalid data
+          localStorage.removeItem('selectedIngredients');
+        }
       }
+    } else {
+      // If recipes were generated, clear ingredients to start fresh
+      localStorage.removeItem('selectedIngredients');
     }
-  }, []);
-
+  }, []); 
+ 
   const handleAddIngredient = (ingredient: string) => {
     if (ingredient && !ingredients.includes(ingredient)) {
       const newIngredients = [...ingredients, ingredient];
@@ -69,7 +80,11 @@ export default function IngredientsPage() {
 
   const handleNext = () => {
     if (ingredients.length > 0) {
-      // Already saved to localStorage in handleAddIngredient and handleRemoveIngredient
+      // Clear any existing generated recipes
+      sessionStorage.removeItem('generatedRecipes');
+      
+      // Save ingredients for the current session
+      localStorage.setItem('selectedIngredients', JSON.stringify(ingredients));
       router.push('/preferences');
     }
   };

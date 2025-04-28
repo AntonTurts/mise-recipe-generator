@@ -24,6 +24,14 @@ export default function PreferencesPage() {
 
   // Try to load from localStorage on initial render
   useEffect(() => {
+    // Check if ingredients are selected
+    const savedIngredients = localStorage.getItem('selectedIngredients');
+    if (!savedIngredients || JSON.parse(savedIngredients).length === 0) {
+      router.push('/ingredients');
+      return;
+    }
+ 
+    // Load saved preferences
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('userPreferences');
       if (saved) {
@@ -34,7 +42,7 @@ export default function PreferencesPage() {
         }
       }
     }
-  }, []);
+  }, [router]);
   
   // Toggle allergy selection
   const toggleAllergy = (allergyId: string) => {
@@ -81,7 +89,7 @@ export default function PreferencesPage() {
   
   // Handle navigation
   const handleBack = () => {
-    router.back();
+    router.push('/ingredients');
   };
   
   const handleFindRecipes = () => {

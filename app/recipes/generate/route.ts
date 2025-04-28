@@ -44,39 +44,28 @@ export async function POST(request: Request) {
       7. Allergy information
       8. Safety notes (especially for raw meat handling, if applicable)
       
-      IMPORTANT: Format your response as a JSON array with EXACTLY 2 recipes, with each recipe having the following structure:
-      {
-        "title": "Recipe Title",
-        "description": "Brief description of the recipe",
-        "prepTime": number (in minutes),
-        "cookTime": number (in minutes),
-        "servings": number,
-        "skillLevel": "beginner", "intermediate", or "advanced",
-        "ingredients": [
-          {
-            "id": "1",
-            "name": "Ingredient with quantity",
-            "amount": "quantity value",
-            "unit": "measurement unit",
-            "available": true,
-            "essential": true or false
-          }
-        ],
-        "instructions": [
-          {
-            "id": 1,
-            "text": "Step instruction",
-            "safetyNote": "Optional safety note for this step"
-          }
-        ],
-        "allergyInfo": {
-          "safe": ["list of safe-for diets"],
-          "warnings": ["list of allergens present"]
-        },
-        "safetyNotes": ["List of safety precautions"]
-      }
-      
-      Response must be valid JSON with no markdown formatting.
+      IMPORTANT: Response must be a JSON object with a "recipes" array containing exactly 2 recipes. Each recipe must have these fields:
+      - title: string
+      - description: string
+      - prepTime: number (in minutes)
+      - cookTime: number (in minutes)
+      - servings: number
+      - skillLevel: string (beginner, intermediate, or advanced)
+      - ingredients: array of objects, each with:
+        - id: string
+        - name: string
+        - amount: string
+        - unit: string
+        - available: boolean
+        - essential: boolean
+      - instructions: array of objects, each with:
+        - id: number
+        - text: string
+        - safetyNote: string or null
+      - allergyInfo: object with:
+        - safe: array of strings
+        - warnings: array of strings
+      - safetyNotes: array of strings
     `;
 
     console.log("Calling OpenAI API...");
@@ -86,7 +75,7 @@ export async function POST(request: Request) {
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
-          {"role": "system", "content": "You are a professional chef specialized in creating safe, delicious recipes from available ingredients. Safety is your top priority. You ALWAYS generate exactly 2 recipes when asked. You only provide valid JSON with no markdown formatting."},
+          {"role": "system", "content": "You are a professional chef specialized in creating safe, delicious recipes from available ingredients. Safety is your top priority. You ALWAYS generate exactly 2 recipes when asked. You only provide valid JSON with no markdown formatting or code blocks."},
           {"role": "user", "content": prompt}
         ],
         temperature: 0.7,
@@ -100,25 +89,41 @@ export async function POST(request: Request) {
       try {
         // Clean the response text to remove any markdown code blocks
         const cleanedResponse = responseText.replace(/```json|```/g, '').trim();
+        console.log("Cleaned response:", cleanedResponse.substring(0, 100) + "...");
         
         // Extract JSON from the response
         const parsedResponse = JSON.parse(cleanedResponse);
-        let recipes = parsedResponse.recipes || [];
         
-        // If not an array or not in expected format, try to extract from the response
-        if (!Array.isArray(recipes) || recipes.length === 0) {
-          if (Array.isArray(parsedResponse)) {
-            recipes = parsedResponse;
-          } else {
-            // Check if it's a single recipe and convert to array
-            if (parsedResponse.title && parsedResponse.ingredients) {
-              recipes = [parsedResponse];
+        // Try to extract recipes from various possible formats
+        let recipes = [];
+        
+        if (Array.isArray(parsedResponse)) {
+          // Direct array format
+          recipes = parsedResponse;
+        } else if (parsedResponse.recipes && Array.isArray(parsedResponse.recipes)) {
+          // Nested under 'recipes' key
+          recipes = parsedResponse.recipes;
+        } else if (parsedResponse.title && parsedResponse.ingredients) {
+          // Single recipe object 
+          recipes = [parsedResponse];
+        } else {
+          // Look for any array property that might contain recipes
+          for (const key in parsedResponse) {
+            if (Array.isArray(parsedResponse[key]) && 
+                parsedResponse[key].length > 0 && 
+                parsedResponse[key][0].title) {
+              recipes = parsedResponse[key];
+              break;
             }
           }
         }
         
+        console.log(`Found ${recipes.length} recipes in response`);
+        
         // Ensure we have exactly 2 recipes
-        if (recipes.length < 2) {
+        if (recipes.length === 0) {
+          throw new Error("No valid recipes found in response");
+        } else if (recipes.length < 2) {
           // If we have fewer than 2, add fallback recipes
           while (recipes.length < 2) {
             recipes.push(createFallbackRecipe(ingredients, recipes.length));
@@ -134,63 +139,75 @@ export async function POST(request: Request) {
         for (let i = 0; i < recipes.length; i++) {
           const recipe = recipes[i];
           
-          // Process recipe to add ID and other metadata
-          const processedRecipe = {
-            ...recipe,
-            id: `generated-${Date.now()}-${i}`,
-            // Mark ingredients as available based on user's input
-            ingredients: recipe.ingredients.map((ing: any, index: number) => ({
-              ...ing,
-              id: ing.id || `${index + 1}`,
-              available: ingredients.some((item: string) => 
-                item.toLowerCase().includes(ing.name.toLowerCase().split(' ')[0]) || 
-                ing.name.toLowerCase().includes(item.toLowerCase())
-              )
-            }))
-          };
-          
-          // Calculate missing ingredients
-          const missingIngredients = processedRecipe.ingredients
-            .filter((ing: any) => ing.essential && !ing.available)
-            .map((ing: any) => ing.name.split(',')[0].trim());
-          
-          // Calculate match percentage
-          const requiredIngredientsCount = processedRecipe.ingredients.filter((ing: any) => ing.essential).length;
-          const availableRequiredCount = processedRecipe.ingredients.filter((ing: any) => ing.essential && ing.available).length;
-          const match = requiredIngredientsCount > 0 
-            ? Math.round((availableRequiredCount / requiredIngredientsCount) * 100) 
-            : 100;
-          
-          // Add missing ingredients and match to recipe
-          const enhancedRecipe = {
-            ...processedRecipe,
-            missingIngredients,
-            match
-          };
-          
-          // Apply safety validation
-          const safetyCheck = validateRecipeSafety ? validateRecipeSafety(enhancedRecipe, preferences.allergies || []) : { isValid: true };
-          const validatedRecipe = {
-            ...enhancedRecipe,
-            safetyCheck
-          };
-          
-          // Store recipe in Firestore
-          try {
-            const recipeRef = await addDoc(collection(db, 'recipes'), {
-              ...validatedRecipe,
-              createdAt: serverTimestamp(),
-            });
-            
-            // Update recipe with Firestore ID
-            validatedRecipe.id = recipeRef.id;
-            console.log(`Recipe ${i+1} saved to Firestore with ID:`, recipeRef.id);
-          } catch (error) {
-            console.error(`Error saving recipe ${i+1} to Firestore:`, error);
-            // Continue even if Firestore save fails
+          // Ensure recipe has all required fields
+          if (!recipe.ingredients || !Array.isArray(recipe.ingredients)) {
+            console.error(`Recipe ${i} has invalid or missing ingredients array`);
+            enhancedRecipes.push(createFallbackRecipe(ingredients, i));
+            continue;
           }
           
-          enhancedRecipes.push(validatedRecipe);
+          // Process recipe to add ID and other metadata
+          try {
+            const processedRecipe = {
+              ...recipe,
+              id: `generated-${Date.now()}-${i}`,
+              // Mark ingredients as available based on user's input
+              ingredients: recipe.ingredients.map((ing: any, index: number) => ({
+                ...ing,
+                id: ing.id || `${index + 1}`,
+                available: ingredients.some((item: string) => 
+                  item.toLowerCase().includes(ing.name.toLowerCase().split(' ')[0]) || 
+                  ing.name.toLowerCase().includes(item.toLowerCase())
+                )
+              }))
+            };
+            
+            // Calculate missing ingredients
+            const missingIngredients = processedRecipe.ingredients
+              .filter((ing: any) => ing.essential && !ing.available)
+              .map((ing: any) => ing.name.split(',')[0].trim());
+            
+            // Calculate match percentage
+            const requiredIngredientsCount = processedRecipe.ingredients.filter((ing: any) => ing.essential).length;
+            const availableRequiredCount = processedRecipe.ingredients.filter((ing: any) => ing.essential && ing.available).length;
+            const match = requiredIngredientsCount > 0 
+              ? Math.round((availableRequiredCount / requiredIngredientsCount) * 100) 
+              : 100;
+            
+            // Add missing ingredients and match to recipe
+            const enhancedRecipe = {
+              ...processedRecipe,
+              missingIngredients,
+              match
+            };
+            
+            // Apply safety validation
+            const safetyCheck = validateRecipeSafety ? validateRecipeSafety(enhancedRecipe, preferences.allergies || []) : { isValid: true };
+            const validatedRecipe = {
+              ...enhancedRecipe,
+              safetyCheck
+            };
+            
+            // Store recipe in Firestore
+            try {
+              const recipeRef = await addDoc(collection(db, 'recipes'), {
+                ...validatedRecipe,
+                createdAt: serverTimestamp(),
+              });
+              
+              // Update recipe with Firestore ID
+              validatedRecipe.id = recipeRef.id;
+              console.log(`Recipe ${i+1} saved to Firestore with ID:`, recipeRef.id);
+            } catch (error) {
+              console.error(`Error saving recipe ${i+1} to Firestore:`, error);
+              // Continue even if Firestore save fails
+            }
+            
+            enhancedRecipes.push(validatedRecipe);
+          } catch (recipeError) {
+            console.error(`Error processing recipe ${i}:`, recipeError);
+            enhancedRecipes.push(createFallbackRecipe(ingredients, i));
+          }
         }
         
         console.log(`Returning ${enhancedRecipes.length} recipes`);

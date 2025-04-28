@@ -20,101 +20,93 @@ export default function RecipesPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   
   useEffect(() => {
-    const fetchRecipes = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Cancel any existing request
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-        }
-        
-        // Create a new abort controller for this request
-        abortControllerRef.current = new AbortController();
-        const signal = abortControllerRef.current.signal;
-        
-        // Get data from localStorage
-        const selectedIngredients = JSON.parse(localStorage.getItem('selectedIngredients') || '[]');
-        const userPreferences = JSON.parse(localStorage.getItem('userPreferences') || '{}');
-        
-        if (selectedIngredients.length === 0) {
-          console.error("No ingredients selected");
-          // If no ingredients selected, redirect to ingredients page
-          router.push('/ingredients');
-          return;
-        }
-        
-        // Log the data being sent to API
-        console.log('Sending to API:', { 
-          ingredients: selectedIngredients, 
-          preferences: userPreferences 
-        });
-        
-        // Fetch recipes from API
-        const response = await fetch('/api/recipes/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ingredients: selectedIngredients,
-            preferences: userPreferences
-          }),
-          signal
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error("API error:", errorData);
-          throw new Error(`Error: ${response.status} - ${errorData.error || 'Unknown error'}`);
-        }
-        
-        const data = await response.json();
-        console.log("Generated recipes:", data);
-        
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('No recipes were generated');
-        }
-        
-        // Save to session storage for later use in detail page
-        sessionStorage.setItem('generatedRecipes', JSON.stringify(data));
-        
-        setRecipes(data);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          console.log('Recipe generation cancelled by user');
-          return;
-        }
-        
-        console.error('Error fetching recipes:', error);
-        setError('Failed to load recipes. Please try again.');
-      } finally {
-        if (abortControllerRef.current) {
-          abortControllerRef.current = null;
-        }
-        setLoading(false);
-      }
-    };
-    
     fetchRecipes();
     
-    // Clean up the abort controller on unmount
+    // Cleanup function to abort any ongoing fetch when component unmounts
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [router]);
+  }, []);
+   
+  const fetchRecipes = async () => {
+    try {
+      // Abort any previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Create a new abort controller for this request
+      abortControllerRef.current = new AbortController();
+      
+      setLoading(true);
+      setError(null);
+      
+      // Get data from localStorage
+      const selectedIngredients = JSON.parse(localStorage.getItem('selectedIngredients') || '[]');
+      const userPreferences = JSON.parse(localStorage.getItem('userPreferences') || '{}');
+      
+      if (selectedIngredients.length === 0) {
+        console.error("No ingredients selected");
+        // If no ingredients selected, redirect to ingredients page
+        router.push('/ingredients');
+        return;
+      }
+      
+      // Log the data being sent to API
+      console.log('Sending to API:', { 
+        ingredients: selectedIngredients, 
+        preferences: userPreferences 
+      });
+      
+      // Fetch recipes from API with the abort signal
+      const response = await fetch('/api/recipes/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ingredients: selectedIngredients,
+          preferences: userPreferences
+        }),
+        signal: abortControllerRef.current.signal
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("API error:", errorData);
+        throw new Error(`Error: ${response.status} - ${errorData.error || 'Unknown error'}`);
+      }
+      
+      const data = await response.json();
+      console.log("Generated recipes:", data);
+      
+      // Save to session storage for later use in detail page
+      sessionStorage.setItem('generatedRecipes', JSON.stringify(data));
+      
+      setRecipes(data);
+    } catch (error: any) {
+      // Don't show error if it was caused by an abort
+      if (error.name === 'AbortError') {
+        console.log('Recipe generation canceled');
+        return;
+      }
+      
+      console.error('Error fetching recipes:', error);
+      setError('Failed to load recipes. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
-  // Function to handle cancellation of recipe generation
   const handleCancelGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
     setLoading(false);
-    router.push('/ingredients');
+    setError('Recipe generation was canceled.');
   };
   
   // Sort recipes based on selected mode
@@ -148,13 +140,14 @@ export default function RecipesPage() {
           <div className="text-center">
             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-mise-500 border-opacity-50 mx-auto mb-4"></div>
             <p className="text-lg text-gray-600 mb-4">Finding personalized recipes for you...</p>
-            <p className="text-sm text-gray-500 mb-8">Mise is working on your request</p>
+            <p className="text-sm text-gray-500 mb-6">Mise is working on your request</p>
             
+            {/* Cancel button */}
             <button 
               onClick={handleCancelGeneration}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center mx-auto"
+              className="px-6 py-2 bg-white border border-red-500 text-red-500 rounded-full hover:bg-red-50 flex items-center mx-auto"
             >
-              <X className="mr-2 h-4 w-4" />
+              <X className="w-4 h-4 mr-2" />
               Cancel
             </button>
           </div>
@@ -172,12 +165,20 @@ export default function RecipesPage() {
             <div className="text-red-500 text-5xl mb-4">❌</div>
             <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
             <p className="text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={() => router.back()}
-              className="px-6 py-3 rounded-full bg-mise-500 text-white font-medium"
-            >
-              Go back and try again
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button 
+                onClick={() => router.push('/ingredients')}
+                className="px-6 py-3 rounded-full border border-mise-500 text-mise-500 font-medium"
+              >
+                Change Ingredients
+              </button>
+              <button 
+                onClick={() => fetchRecipes()}
+                className="px-6 py-3 rounded-full bg-mise-500 text-white font-medium"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -194,12 +195,12 @@ export default function RecipesPage() {
           <p className="text-green-800 mb-2 md:mb-0">
             <span className="font-medium">Found {recipes.length} recipes</span> matching your ingredients
           </p>
-          <p className="text-green-800">
-            {recipes.length > 0 
-              ? `Cooking time: ${Math.min(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))}-${Math.max(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} min`
-              : 'Cooking time: varies'
-            }
-          </p>
+          {recipes.length > 0 && (
+            <p className="text-green-800">
+              Cooking time: ~{Math.min(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} - 
+              {Math.max(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} min
+            </p>
+          )}
         </div>
       </div>
       
@@ -240,11 +241,7 @@ export default function RecipesPage() {
                     </li>
                     <li 
                       className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${sortMode === 'missing' ? 'bg-mise-50 text-mise-600' : ''}`}
-                      onClick={() => {
-                        setSortMode('missing');
-                        setDropdownOpen(false);
-                      }}
-                    >
+                      >
                       Fewest missing ingredients
                     </li>
                   </ul>

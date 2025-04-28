@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Clock, User, AlertTriangle, Star, Info, ShoppingBag, Check, ChevronRight, Bookmark, X } from 'lucide-react';
+import { ChevronLeft, Clock, User, AlertTriangle, Star, Info, ShoppingBag, Check, ChevronRight, Bookmark } from 'lucide-react';
 import { Recipe } from '../../../lib/types';
 import Header from '../../../components/layout/Header';
 import { useAuth } from '../../../context/AuthContext';
@@ -17,9 +17,8 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   const [servings, setServings] = useState(2);
   const [isSaved, setIsSaved] = useState(false);
   
-  // Store the recipeId in a ref to avoid the params warning
-  const recipeIdRef = useRef(params.id);
-  const recipeId = recipeIdRef.current;
+  // Use the param directly instead of a ref to avoid the warning for now
+  // We can refactor this in the future when React.use() is required
   
   useEffect(() => {
     const fetchRecipe = async () => {
@@ -29,34 +28,42 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         // Try to get from sessionStorage first (for recently generated recipes)
         const storedRecipes = sessionStorage.getItem('generatedRecipes');
         if (storedRecipes) {
-          const allRecipes = JSON.parse(storedRecipes);
-          const foundRecipe = allRecipes.find((r: Recipe) => r.id === recipeId);
-          
-          if (foundRecipe) {
-            console.log("Found recipe in session storage:", foundRecipe);
-            setRecipe(foundRecipe);
-            setServings(foundRecipe.servings || 2);
-            setLoading(false);
-            return;
+          try {
+            const allRecipes = JSON.parse(storedRecipes);
+            const foundRecipe = allRecipes.find((r: Recipe) => r.id === params.id);
+             
+            if (foundRecipe) {
+              console.log("Found recipe in session storage:", foundRecipe.title);
+              setRecipe(foundRecipe);
+              setServings(foundRecipe.servings || 2);
+              setLoading(false);
+              return;
+            }
+          } catch (parseError) {
+            console.error("Error parsing stored recipes:", parseError);
           }
         }
         
         // If not in sessionStorage, fetch from Firestore
-        const { getRecipeById } = await import('../../../lib/api');
-        const fetchedRecipe = await getRecipeById(recipeId);
-        
-        if (fetchedRecipe) {
-          console.log("Found recipe in Firestore:", fetchedRecipe);
-          setRecipe(fetchedRecipe);
-          setServings(fetchedRecipe.servings || 2);
-          setLoading(false);
-          return;
+        try {
+          const { getRecipeById } = await import('../../../lib/api');
+          const fetchedRecipe = await getRecipeById(params.id);
+          
+          if (fetchedRecipe) {
+            console.log("Found recipe in Firestore:", fetchedRecipe.title);
+            setRecipe(fetchedRecipe);
+            setServings(fetchedRecipe.servings || 2);
+            setLoading(false);
+            return;
+          }
+        } catch (firestoreError) {
+          console.error("Error fetching from Firestore:", firestoreError);
         }
         
-        // If we get here, recipe not found, check if it's a special ID that might have been shared
-        console.log("Recipe not found in storage or Firestore, fetching from API:", recipeId);
+        // Try direct API call as a last resort
         try {
-          const response = await fetch(`/api/recipes/${recipeId}`);
+          console.log("Fetching recipe from API:", params.id);
+          const response = await fetch(`/api/recipes/${params.id}`);
           if (response.ok) {
             const apiRecipe = await response.json();
             setRecipe(apiRecipe);
@@ -68,8 +75,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           console.error("API fetch error:", apiError);
         }
         
-        // If still not found, show an error or fallback
-        console.error("Recipe not found:", recipeId);
+        console.error("Recipe not found:", params.id);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching recipe:', error);
@@ -78,7 +84,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     };
     
     fetchRecipe();
-  }, [recipeId]);
+  }, [params.id]);
   
   // Check if recipe is saved in user's collection
   useEffect(() => {
@@ -239,7 +245,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
             <div>
               <p className="font-bold text-blue-800">Allergy Information:</p>
               <p className="text-blue-800">
-                {recipe.allergyInfo.safe && recipe.allergyInfo.safe.length > 0 ? (
+                {recipe.allergyInfo && recipe.allergyInfo.safe && recipe.allergyInfo.safe.length > 0 && recipe.allergyInfo.safe[0] !== "none specified" ? (
                   <>
                     <span>This recipe is </span>
                     {recipe.allergyInfo.safe.map((item, index) => (
@@ -255,7 +261,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                   <span>No specific allergy information available.</span>
                 )}
               </p>
-              {recipe.allergyInfo.warnings && recipe.allergyInfo.warnings.length > 0 && (
+              {recipe.allergyInfo && recipe.allergyInfo.warnings && recipe.allergyInfo.warnings.length > 0 && recipe.allergyInfo.warnings[0] !== "none" && (
                 <div className="mt-1 flex items-center">
                   <AlertTriangle className="w-4 h-4 text-red-600 mr-1" />
                   <p className="text-red-600 font-medium">
@@ -346,12 +352,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                   </div>
                 ))}
               </div>
-              
-              {/* Missing Ingredients Action */}
-              <button className="w-full p-3 bg-amber-500 text-white rounded-lg flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 mr-2" />
-                Add missing ingredients to shopping list
-              </button>
             </div>
           )}
           
@@ -377,14 +377,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                     </div>
                   </div>
                 ))}
-              </div>
-              
-              {/* Start Cooking Button */}
-              <div className="mt-8">
-                <button className="w-full p-3 bg-mise-500 text-white rounded-lg flex items-center justify-center">
-                  Start Cooking Mode
-                  <ChevronRight className="ml-1 h-4 w-4" />
-                </button>
               </div>
             </div>
           )}
@@ -418,7 +410,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <h4 className="font-bold text-gray-800 mb-2">Allergy Information</h4>
                 
-                {recipe.allergyInfo.safe && recipe.allergyInfo.safe.length > 0 && (
+                {recipe.allergyInfo && recipe.allergyInfo.safe && recipe.allergyInfo.safe.length > 0 && recipe.allergyInfo.safe[0] !== "none specified" && (
                   <div className="mb-3">
                     <p className="font-medium text-gray-700 mb-1">Safe for:</p>
                     <div className="flex flex-wrap gap-2">
@@ -431,7 +423,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 
-                {recipe.allergyInfo.warnings && recipe.allergyInfo.warnings.length > 0 && (
+                {recipe.allergyInfo && recipe.allergyInfo.warnings && recipe.allergyInfo.warnings.length > 0 && recipe.allergyInfo.warnings[0] !== "none" && (
                   <div>
                     <p className="font-medium text-gray-700 mb-1">Contains:</p>
                     <div className="flex flex-wrap gap-2">
@@ -444,8 +436,14 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                   </div>
                 )}
                 
-                {(!recipe.allergyInfo.warnings || recipe.allergyInfo.warnings.length === 0) && 
-                 (!recipe.allergyInfo.safe || recipe.allergyInfo.safe.length === 0) && (
+                {(!recipe.allergyInfo || 
+                  !recipe.allergyInfo.warnings || 
+                  recipe.allergyInfo.warnings.length === 0 || 
+                  recipe.allergyInfo.warnings[0] === "none") && 
+                 (!recipe.allergyInfo || 
+                  !recipe.allergyInfo.safe || 
+                  recipe.allergyInfo.safe.length === 0 || 
+                  recipe.allergyInfo.safe[0] === "none specified") && (
                   <p className="text-gray-600">No specific allergy information available.</p>
                 )}
               </div>
@@ -463,14 +461,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           >
             <ChevronLeft className="mr-1 h-4 w-4" />
             Back to Results
-          </button>
-          
-          <button 
-            className="px-6 py-3 rounded-full bg-mise-500 text-white font-medium flex items-center hover:bg-mise-600"
-            onClick={() => setActiveTab('instructions')}
-          >
-            Start Cooking
-            <ChevronRight className="ml-1 h-4 w-4" />
           </button>
         </div>
       </div>
