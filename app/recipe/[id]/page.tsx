@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Clock, User, AlertTriangle, Star, Info, ShoppingBag, Check, ChevronRight, Bookmark } from 'lucide-react';
+import { ChevronLeft, Clock, User, AlertTriangle, Star, Info, Bookmark } from 'lucide-react';
 import { Recipe } from '../../../lib/types';
 import Header from '../../../components/layout/Header';
 import { useAuth } from '../../../context/AuthContext';
@@ -14,11 +14,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ingredients');
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
-  const [servings, setServings] = useState(2);
   const [isSaved, setIsSaved] = useState(false);
-  
-  // Use the param directly instead of a ref to avoid the warning for now
-  // We can refactor this in the future when React.use() is required
   
   useEffect(() => {
     const fetchRecipe = async () => {
@@ -35,7 +31,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
             if (foundRecipe) {
               console.log("Found recipe in session storage:", foundRecipe.title);
               setRecipe(foundRecipe);
-              setServings(foundRecipe.servings || 2);
               setLoading(false);
               return;
             }
@@ -52,7 +47,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           if (fetchedRecipe) {
             console.log("Found recipe in Firestore:", fetchedRecipe.title);
             setRecipe(fetchedRecipe);
-            setServings(fetchedRecipe.servings || 2);
             setLoading(false);
             return;
           }
@@ -67,7 +61,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           if (response.ok) {
             const apiRecipe = await response.json();
             setRecipe(apiRecipe);
-            setServings(apiRecipe.servings || 2);
             setLoading(false);
             return;
           }
@@ -127,12 +120,6 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     }
   };
   
-  // Function to adjust servings
-  const adjustServings = (amount: number) => {
-    const newServings = Math.max(1, servings + amount);
-    setServings(newServings);
-  };
-  
   // Function to determine tab styles
   const getTabStyle = (tab: string) => {
     return activeTab === tab
@@ -162,9 +149,11 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       <div className="flex flex-col min-h-screen bg-gray-50">
         <Header title="Recipe Details" />
         <div className="flex-grow flex items-center justify-center">
-          <div className="text-center">
+          <div className="text-center bg-white p-8 rounded-lg shadow-md max-w-md">
             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-mise-500 border-opacity-50 mx-auto mb-4"></div>
-            <p className="text-lg text-gray-600">Loading recipe details...</p>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Loading Recipe</h2>
+            <p className="text-gray-600">Loading recipe details...</p>
+            <p className="text-sm text-gray-500 mt-2">This will only take a moment</p>
           </div>
         </div>
       </div>
@@ -303,24 +292,8 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           {/* Ingredients Tab */}
           {activeTab === 'ingredients' && (
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-gray-800">Ingredients ({servings} servings)</h3>
-                <div className="flex items-center">
-                  <button 
-                    className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-l-md"
-                    onClick={() => adjustServings(-1)}
-                    disabled={servings <= 1}
-                  >
-                    -
-                  </button>
-                  <span className="px-3 py-1 text-sm bg-white border-t border-b border-gray-300">{servings}</span>
-                  <button 
-                    className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-r-md"
-                    onClick={() => adjustServings(1)}
-                  >
-                    +
-                  </button>
-                </div>
+              <div className="mb-4">
+                <h3 className="text-xl font-bold text-gray-800">Ingredients</h3>
               </div>
               
               <div className="space-y-2 mb-6">
@@ -345,7 +318,9 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                         )}
                       </div>
                       <span className={selectedIngredients.includes(ingredient.id) ? 'line-through text-gray-500' : ''}>
-                        {ingredient.name}
+                        {ingredient.amount && ingredient.unit ? 
+                          `${ingredient.name} (${ingredient.amount} ${ingredient.unit})` : 
+                          ingredient.name}
                       </span>
                     </div>
                     {getIngredientBadge(ingredient)}
@@ -361,7 +336,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
               <h3 className="text-xl font-bold text-gray-800 mb-4">Step-by-Step Instructions</h3>
               <div className="space-y-6">
                 {recipe.instructions && recipe.instructions.map((step, index) => (
-                  <div key={step.id} className="flex">
+                  <div key={step.id || index} className="flex">
                     <div className="w-8 h-8 rounded-full bg-mise-500 text-white flex items-center justify-center flex-shrink-0 mt-1">
                       {index + 1}
                     </div>

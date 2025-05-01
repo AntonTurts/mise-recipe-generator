@@ -17,10 +17,11 @@ export default function PreferencesPage() {
     dietaryPreferences: [],
     skillLevel: 1,
     cookingTime: 30,
-    equipment: ['oven', 'microwave', 'hob']
+    equipment: ['oven', 'microwave']
   };
 
   const [preferences, setPreferences] = useState<UserPreferences>(defaultPreferences);
+  const [originalPreferences, setOriginalPreferences] = useState<string>('');
 
   // Try to load from localStorage on initial render
   useEffect(() => {
@@ -36,7 +37,10 @@ export default function PreferencesPage() {
       const saved = localStorage.getItem('userPreferences');
       if (saved) {
         try {
-          setPreferences(JSON.parse(saved));
+          const parsedPreferences = JSON.parse(saved);
+          setPreferences(parsedPreferences);
+          // Store original preferences for comparison later
+          setOriginalPreferences(saved);
         } catch (e) {
           console.error('Failed to parse saved preferences', e);
         }
@@ -94,7 +98,15 @@ export default function PreferencesPage() {
   
   const handleFindRecipes = () => {
     // Save preferences
-    localStorage.setItem('userPreferences', JSON.stringify(preferences));
+    const preferencesJson = JSON.stringify(preferences);
+    localStorage.setItem('userPreferences', preferencesJson);
+    
+    // Check if preferences have changed
+    if (preferencesJson !== originalPreferences) {
+      // Set a flag to indicate preferences have been updated
+      sessionStorage.setItem('preferencesChanged', 'true');
+    }
+    
     router.push('/recipes');
   };
   

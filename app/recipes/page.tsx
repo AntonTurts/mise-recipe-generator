@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronDown, AlertCircle, X } from 'lucide-react';
+import { ChevronLeft, ChevronDown, AlertCircle, X, RefreshCw } from 'lucide-react';
 import { Recipe } from '../../lib/types';
 import Header from '../../components/layout/Header';
 import RecipeCard from '../../components/recipe/RecipeCard';
@@ -17,9 +17,41 @@ export default function RecipesPage() {
   const [error, setError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState('best');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showPreferencesUpdated, setShowPreferencesUpdated] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   
   useEffect(() => {
+    // Get the stored ingredients and preferences
+    const storedIngredients = localStorage.getItem('selectedIngredients');
+    const storedPreferences = localStorage.getItem('userPreferences');
+    
+    if (!storedIngredients || JSON.parse(storedIngredients).length === 0) {
+      // If no ingredients selected, redirect to ingredients page
+      router.push('/ingredients');
+      return;
+    }
+
+    // Check if we already have generated recipes in session storage
+    const storedRecipes = sessionStorage.getItem('generatedRecipes');
+    const preferencesChanged = sessionStorage.getItem('preferencesChanged');
+    
+    if (storedRecipes && !preferencesChanged) {
+      try {
+        const parsedRecipes = JSON.parse(storedRecipes);
+        setRecipes(parsedRecipes);
+        setLoading(false);
+        return;
+      } catch (parseError) {
+        console.error('Error parsing stored recipes:', parseError);
+        // Continue to fetch recipes if parsing fails
+      }
+    } else if (preferencesChanged) {
+      // Flag to show that preferences have been updated
+      setShowPreferencesUpdated(true);
+      sessionStorage.removeItem('preferencesChanged');
+    }
+    
+    // Either no stored recipes or preferences changed
     fetchRecipes();
     
     // Cleanup function to abort any ongoing fetch when component unmounts
@@ -28,7 +60,7 @@ export default function RecipesPage() {
         abortControllerRef.current.abort();
       }
     };
-  }, []);
+  }, [router]);
    
   const fetchRecipes = async () => {
     try {
@@ -85,6 +117,10 @@ export default function RecipesPage() {
       // Save to session storage for later use in detail page
       sessionStorage.setItem('generatedRecipes', JSON.stringify(data));
       
+      // Clear the preferences changed flag
+      sessionStorage.removeItem('preferencesChanged');
+      setShowPreferencesUpdated(false);
+      
       setRecipes(data);
     } catch (error: any) {
       // Don't show error if it was caused by an abort
@@ -107,6 +143,22 @@ export default function RecipesPage() {
     }
     setLoading(false);
     setError('Recipe generation was canceled.');
+  };
+  
+  // Method to regenerate recipes
+  const regenerateRecipes = () => {
+    // Remove the stored recipes and preferences changed flag
+    sessionStorage.removeItem('generatedRecipes');
+    sessionStorage.removeItem('preferencesChanged');
+    setShowPreferencesUpdated(false);
+    
+    // Fetch new recipes
+    fetchRecipes();
+  };
+  
+  // Method to go back to change preferences without losing recipes
+  const goBackToPreferences = () => {
+    router.push('/preferences');
   };
   
   // Sort recipes based on selected mode
@@ -132,15 +184,20 @@ export default function RecipesPage() {
     }
   };
   
+  // Show loading state when first loading the page or generating recipes
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50">
         <Header title="Finding Recipes" />
         <div className="flex-grow flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-mise-500 border-opacity-50 mx-auto mb-4"></div>
-            <p className="text-lg text-gray-600 mb-4">Finding personalized recipes for you...</p>
-            <p className="text-sm text-gray-500 mb-6">Mise is working on your request</p>
+          <div className="text-center max-w-md mx-auto p-6 bg-white rounded-lg shadow-md">
+            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-mise-500 border-opacity-50 mx-auto mb-6"></div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Recipes Being Generated</h2>
+            <p className="text-gray-600 mb-4">We're crafting personalized recipes with your ingredients. This usually takes about 15 seconds.</p>
+            <div className="h-2 bg-gray-200 rounded-full mb-4">
+              <div className="h-full bg-mise-500 rounded-full animate-pulse"></div>
+            </div>
+            <p className="text-sm text-gray-500 mb-6">Our AI is finding the best combinations for delicious meals</p>
             
             {/* Cancel button */}
             <button 
@@ -148,7 +205,7 @@ export default function RecipesPage() {
               className="px-6 py-2 bg-white border border-red-500 text-red-500 rounded-full hover:bg-red-50 flex items-center mx-auto"
             >
               <X className="w-4 h-4 mr-2" />
-              Cancel
+              Cancel Generation
             </button>
           </div>
         </div>
@@ -189,24 +246,43 @@ export default function RecipesPage() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Header title="Recipe Results" />
       
+      {/* Preferences Updated Notice */}
+      {showPreferencesUpdated && (
+        <div className="bg-blue-50 border-b border-blue-200">
+          <div className="container mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center">
+            <div className="flex items-center mb-2 sm:mb-0">
+              <AlertCircle className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
+              <p className="text-blue-800">Your preferences have been updated but recipes haven't been regenerated.</p>
+            </div>
+            <button
+              onClick={regenerateRecipes}
+              className="px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 text-sm flex items-center whitespace-nowrap"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Generate New Recipes
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Results Info Banner */}
       <div className="container mx-auto px-4 mt-4">
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex flex-col md:flex-row md:justify-between md:items-center">
-          <p className="text-green-800 mb-2 md:mb-0">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <p className="text-green-800">
             <span className="font-medium">Found {recipes.length} recipes</span> matching your ingredients
+            {recipes.length > 0 && (
+              <span className="ml-1 md:ml-4">
+                Cooking time: ~{Math.min(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} - 
+                {Math.max(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} min
+              </span>
+            )}
           </p>
-          {recipes.length > 0 && (
-            <p className="text-green-800">
-              Cooking time: ~{Math.min(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} - 
-              {Math.max(...recipes.map(r => (r.prepTime || 0) + (r.cookTime || 0)))} min
-            </p>
-          )}
         </div>
       </div>
       
-      {/* Sort Dropdown */}
+      {/* Sort Dropdown and Action Buttons */}
       <div className="container mx-auto px-4 mt-4">
-        <div className="bg-white border border-gray-200 rounded-lg p-3 flex items-center">
+        <div className="bg-white border border-gray-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3">
           <div className="relative flex items-center">
             <span className="text-gray-700 mr-3">Sort by:</span>
             <div className="relative">
@@ -241,7 +317,11 @@ export default function RecipesPage() {
                     </li>
                     <li 
                       className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${sortMode === 'missing' ? 'bg-mise-50 text-mise-600' : ''}`}
-                      >
+                      onClick={() => {
+                        setSortMode('missing');
+                        setDropdownOpen(false);
+                      }}
+                    >
                       Fewest missing ingredients
                     </li>
                   </ul>
@@ -249,14 +329,40 @@ export default function RecipesPage() {
               )}
             </div>
           </div>
+          
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={goBackToPreferences}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md font-medium hover:bg-gray-200 transition-colors flex items-center"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Update Preferences
+            </button>
+            
+            <button
+              onClick={regenerateRecipes}
+              className="px-4 py-2 bg-green-100 text-green-700 rounded-md font-medium hover:bg-green-200 transition-colors flex items-center"
+            >
+              <RefreshCw className="w-4 h-4 mr-1" />
+              Regenerate Recipes
+            </button>
+          </div>
         </div>
       </div>
       
       {/* Recipe List */}
       <div className="container mx-auto px-4 py-6 flex-grow">
-        {sortedRecipes.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-500 text-lg">No recipes found. Try selecting different ingredients.</p>
+        {recipes.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg mb-4">No recipes found. Try selecting different ingredients.</p>
+            <button
+              onClick={() => router.push('/ingredients')}
+              className="px-6 py-3 rounded-full bg-mise-500 text-white font-medium inline-flex items-center"
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Change Ingredients
+            </button>
           </div>
         ) : (
           <div className="space-y-4">
