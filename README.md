@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mise - Recipe Generator
 
-## Getting Started
+![Mise Logo](https://placeholder.co/200x100)
 
-First, run the development server:
+## About
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Mise is an AI-powered recipe generator application designed to help reduce food waste by creating personalized recipes from ingredients you already have on hand. The application uses OpenAI's GPT-4 to generate safe, appropriate recipes tailored to your cooking skill level, dietary preferences, and available equipment.
+
+## Key Features
+
+- **Ingredient-First Approach**: Start with what you have, not what you need to buy
+- **Personalized Recipes**: Filter by skill level, dietary restrictions, and time constraints
+- **Safety-Focused**: Clear safety information and allergen warnings
+- **User Accounts**: Save favorite recipes and preferences
+- **Mobile Responsive**: Easy to use while cooking
+
+## Technology Stack
+
+- **Frontend**: React.js with Tailwind CSS
+- **Backend**: Next.js API Routes
+- **Authentication**: Firebase Authentication
+- **Database**: Firebase Firestore
+- **AI**: OpenAI GPT-4 API
+- **Deployment**: Vercel
+
+
+
+## Project Structure
+
+```
+mise-recipe-generator/
+├── app/                    # Next.js application pages
+│   ├── api/                # API routes
+│   ├── ingredients/        # Ingredient selection page
+│   ├── preferences/        # User preferences page
+│   ├── recipes/            # Recipe results page
+│   ├── recipe/[id]/        # Recipe detail page
+│   ├── profile/            # User profile page
+│   └── ...
+├── components/             # React components
+│   ├── layout/             # Layout components
+│   ├── recipe/             # Recipe-related components
+│   ├── ui/                 # UI components
+│   └── ...
+├── context/                # React context providers
+│   └── AuthContext.tsx     # Authentication context
+├── data/                   # Static data
+│   ├── ingredients.ts      # Ingredient data
+│   ├── allergies.ts        # Allergy data
+│   └── equipment.ts        # Equipment data
+├── lib/                    # Utility functions
+│   ├── firebase.ts         # Firebase configuration
+│   ├── types.ts            # TypeScript types
+│   ├── safety.ts           # Recipe safety validation
+│   └── ...
+├── styles/                 # CSS styles
+└── ...
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features in Detail
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Ingredient Selection
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Users can input ingredients they have available, with suggestions for common items. The application stores this list to generate appropriate recipes.
 
-## Learn More
+### Preferences & Constraints
 
-To learn more about Next.js, take a look at the following resources:
+Users can specify:
+- Dietary restrictions and allergies
+- Cooking skill level
+- Maximum cooking time
+- Available kitchen equipment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Recipe Generation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The application uses OpenAI's GPT-4 API to create personalized recipes based on:
+- Available ingredients
+- User preferences
+- Safety considerations
+- Cooking skill level
 
-## Deploy on Vercel
+### Recipe Presentation
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Recipes include:
+- Detailed ingredients list with quantities
+- Step-by-step instructions
+- Safety notes and allergen information
+- Cooking and preparation times
+- Skill level indicator
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### User Accounts
+
+- Create and manage user profiles
+- Save favorite recipes
+- Track recipe history
+- Store preferences for future use
+
+## Safety Focus
+
+Safety is a core priority in Mise:
+
+- All recipes undergo safety validation
+- Clear allergen warnings provided
+- Proper cooking instructions for raw ingredients
+- Safety notes for high-risk preparation steps
+
+## Project Roadmap
+
+### Upcoming Features
+
+- Recipe images via AI generation
+- Nutritional information
+- Shopping list integration
+- Meal planning functionality
+- Community recipe sharing
+
+### Long-term Goals
+
+- Mobile applications (iOS/Android)
+- Integration with smart kitchen devices
+- Expanded international cuisine options
+- Recipe rating and feedback system
+
+
+## Contact
+
+Anton Turtsevych - [your-email@example.com](mailto:your-email@example.com)
