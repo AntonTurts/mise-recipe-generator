@@ -27,13 +27,13 @@ async function fetchRecipeById(id: string): Promise<Recipe | null> {
   }
 }
 
-// Updated function signature to match Next.js 15 requirements
+// Next.js 15 route handler format
 export async function GET(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     console.log(`API: Fetching recipe with ID: ${id}`);
     
     // Handle special case for generated IDs
