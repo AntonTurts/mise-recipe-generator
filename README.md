@@ -1,6 +1,5 @@
 # Mise - Recipe Generator
 
-![Mise Logo](https://placeholder.co/200x100)
 
 ## About
 
