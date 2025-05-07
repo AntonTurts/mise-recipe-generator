@@ -124,4 +124,4 @@ Safety is a core priority in Mise:
 
 ## Contact
 
-Anton Turtsevych - [your-email@example.com](mailto:your-email@example.com)
+Anton Turtsevych - [anton2.turtsevych@uwe.ac.uk](mailto:anton2.turtsevych@uwe.ac.uk)
