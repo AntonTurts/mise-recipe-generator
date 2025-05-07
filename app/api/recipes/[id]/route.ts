@@ -27,13 +27,14 @@ async function fetchRecipeById(id: string): Promise<Recipe | null> {
   }
 }
 
-// Next.js 15 route handler format
+// The key change is that params is now a Promise
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    // Need to await params now
+    const { id } = await params;
     console.log(`API: Fetching recipe with ID: ${id}`);
     
     // Handle special case for generated IDs
