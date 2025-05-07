@@ -27,12 +27,17 @@ async function fetchRecipeById(id: string): Promise<Recipe | null> {
   }
 }
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+// Updated function signature to match Next.js 15 requirements
+export async function GET(
+  request: Request,
+  context: { params: { id: string } }
+) {
   try {
-    console.log(`API: Fetching recipe with ID: ${params.id}`);
+    const { id } = context.params;
+    console.log(`API: Fetching recipe with ID: ${id}`);
     
     // Handle special case for generated IDs
-    if (params.id.startsWith('generated-')) {
+    if (id.startsWith('generated-')) {
       // Try to get recipe from sessionStorage via client-side handling
       console.log("Generated ID detected - client should handle this");
       return NextResponse.json({ 
@@ -41,7 +46,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
     
     // For non-generated IDs, try to fetch from Firestore
-    const recipe = await fetchRecipeById(params.id);
+    const recipe = await fetchRecipeById(id);
     
     if (!recipe) {
       // If not found, return 404
@@ -50,7 +55,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     
     return NextResponse.json(recipe);
   } catch (error) {
-    console.error(`Error fetching recipe ${params.id}:`, error);
+    console.error(`Error fetching recipe:`, error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -13,7 +13,8 @@ export default function RecipesPage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Always start with loading true
+  const [dataLoaded, setDataLoaded] = useState(false); // Flag to indicate if any data has been loaded
   const [error, setError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState('best');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -21,40 +22,57 @@ export default function RecipesPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   
   useEffect(() => {
-    // Get the stored ingredients and preferences
-    const storedIngredients = localStorage.getItem('selectedIngredients');
-    const storedPreferences = localStorage.getItem('userPreferences');
-    
-    if (!storedIngredients || JSON.parse(storedIngredients).length === 0) {
-      // If no ingredients selected, redirect to ingredients page
-      router.push('/ingredients');
-      return;
-    }
-
-    // Check if we already have generated recipes in session storage
-    const storedRecipes = sessionStorage.getItem('generatedRecipes');
-    const preferencesChanged = sessionStorage.getItem('preferencesChanged');
-    
-    if (storedRecipes && !preferencesChanged) {
+    const checkAndLoadData = async () => {
       try {
-        const parsedRecipes = JSON.parse(storedRecipes);
-        setRecipes(parsedRecipes);
+        // Ensure we start with loading state
+        setLoading(true);
+        
+        // Get the stored ingredients and preferences
+        const storedIngredients = localStorage.getItem('selectedIngredients');
+        const storedPreferences = localStorage.getItem('userPreferences');
+        
+        if (!storedIngredients || JSON.parse(storedIngredients).length === 0) {
+          // If no ingredients selected, redirect to ingredients page
+          router.push('/ingredients');
+          return;
+        }
+
+        // Check if we already have generated recipes in session storage
+        const storedRecipes = sessionStorage.getItem('generatedRecipes');
+        const preferencesChanged = sessionStorage.getItem('preferencesChanged');
+        
+        if (storedRecipes && !preferencesChanged) {
+          try {
+            const parsedRecipes = JSON.parse(storedRecipes);
+            setRecipes(parsedRecipes);
+            setDataLoaded(true);
+            setLoading(false);
+          } catch (parseError) {
+            console.error('Error parsing stored recipes:', parseError);
+            // Continue to fetch recipes if parsing fails
+            await fetchRecipes();
+          }
+        } else {
+          if (preferencesChanged) {
+            // Flag to show that preferences have been updated
+            setShowPreferencesUpdated(true);
+            sessionStorage.removeItem('preferencesChanged');
+            setDataLoaded(true);
+            setLoading(false);
+          } else {
+            // No stored recipes or failed to parse - fetch new ones
+            await fetchRecipes();
+          }
+        }
+      } catch (error) {
+        console.error('Error in initial data loading:', error);
+        setError('Error loading data. Please try again.');
         setLoading(false);
-        return;
-      } catch (parseError) {
-        console.error('Error parsing stored recipes:', parseError);
-        // Continue to fetch recipes if parsing fails
       }
-    } else if (preferencesChanged) {
-      // Flag to show that preferences have been updated
-      setShowPreferencesUpdated(true);
-      sessionStorage.removeItem('preferencesChanged');
-    }
+    };
     
-    // Either no stored recipes or preferences changed
-    fetchRecipes();
+    checkAndLoadData();
     
-    // Cleanup function to abort any ongoing fetch when component unmounts
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -64,6 +82,9 @@ export default function RecipesPage() {
    
   const fetchRecipes = async () => {
     try {
+      // Always set loading to true when fetching
+      setLoading(true);
+      
       // Abort any previous request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -72,7 +93,6 @@ export default function RecipesPage() {
       // Create a new abort controller for this request
       abortControllerRef.current = new AbortController();
       
-      setLoading(true);
       setError(null);
       
       // Get data from localStorage
@@ -91,6 +111,9 @@ export default function RecipesPage() {
         ingredients: selectedIngredients, 
         preferences: userPreferences 
       });
+      
+      // Add a slight delay to ensure loading state is visible
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Fetch recipes from API with the abort signal
       const response = await fetch('/api/recipes/generate', {
@@ -122,6 +145,7 @@ export default function RecipesPage() {
       setShowPreferencesUpdated(false);
       
       setRecipes(data);
+      setDataLoaded(true);
     } catch (error: any) {
       // Don't show error if it was caused by an abort
       if (error.name === 'AbortError') {

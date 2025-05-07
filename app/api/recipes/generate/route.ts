@@ -7,7 +7,7 @@ import { db } from '../../../../lib/firebase';
 import { validateRecipeSafety } from '../../../../lib/safety';
 
 // Initialize OpenAI client
-const openAI = new OpenAI({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
       return NextResponse.json({ error: 'No ingredients provided' }, { status: 400 });
     }
-
+ 
     // Determine appropriate difficulty level based on user's skill level
     let skillLevelDescription = "";
     if (preferences.skillLevel === 1) {
@@ -42,31 +42,14 @@ export async function POST(request: Request) {
       - Maximum Cooking Time: ${preferences.cookingTime} minutes
       ${preferences.equipment && preferences.equipment.length > 0 ? `- Available Equipment: ${preferences.equipment.join(', ')}` : '- No equipment specified'}
       
-      IMPORTANT REQUIREMENTS:
-      
-      1. Use approximate or relative measurements in the recipes since the user has not specified exact amounts of ingredients they have.
-      For example, use descriptions like:
-      - "a handful of spinach"
-      - "2 parts chicken to 1 part sauce"
-      - "about a tablespoon of olive oil" 
-      - "a small onion, diced"
-      - "equal parts flour and butter"
-      - "two medium potatoes"
-      
-      2. Be forgiving with ingredient names and account for common misspellings and variations.
-      For example, understand that:
-      - "mozerlla" means "mozzarella"
-      - "parsly" means "parsley"
-      - "bellpepper" means "bell pepper"
-      
-      3. The recipes should be diverse - different types of dishes that use the ingredients in different ways.
+      The recipes should be diverse - different types of dishes that use the ingredients in different ways.
       
       For each recipe, provide:
       1. A descriptive title
       2. A brief description
       3. Preparation time and cooking time
-      4. Number of servings (default to 2)
-      5. Ingredients list with approximate quantities, and mark which ones are essential vs. optional
+      4. Number of servings
+      5. Ingredients list with quantities, and mark which ones are essential vs. optional
       6. Step-by-step instructions with any safety notes where needed (include all steps to complete the dish)
       7. Allergy information
       8. Safety notes (especially for raw meat handling, if applicable)
@@ -99,7 +82,7 @@ export async function POST(request: Request) {
     
     try {
       // Call OpenAI API
-      const completion = await openAI.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
           {"role": "system", "content": "You are a professional chef specialized in creating safe, delicious recipes from available ingredients. Safety is your top priority. You ALWAYS generate exactly 2 recipes when asked. You only provide valid JSON with no markdown formatting or code blocks. Your recipes are practical and achievable, not unnecessarily complex."},
@@ -116,10 +99,33 @@ export async function POST(request: Request) {
       try {
         // Clean the response text to remove any markdown code blocks
         const cleanedResponse = responseText.replace(/```json|```/g, '').trim();
-        console.log("Cleaned response:", cleanedResponse.substring(0, 100) + "...");
+        console.log("Cleaned response (first 100 chars):", cleanedResponse.substring(0, 100) + "...");
         
-        // Extract JSON from the response
-        const parsedResponse = JSON.parse(cleanedResponse);
+        let parsedResponse;
+        
+        // Try standard JSON parsing first
+        try {
+          parsedResponse = JSON.parse(cleanedResponse);
+        } catch (jsonError) {
+          console.error("Standard JSON parse failed:", jsonError.message);
+          
+          // Try to fix common JSON issues
+          try {
+            // Fix for missing quotes around property names or values
+            const fixedJson = cleanedResponse
+              .replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3') // Add quotes to property names
+              .replace(/:\s*([^",\{\[\]\}\s][^",\{\[\]\}]*?)(\s*[,\}])/g, ':"$1"$2'); // Add quotes to unquoted values
+            
+            console.log("Attempting to parse fixed JSON (first 100 chars):", fixedJson.substring(0, 100) + "...");
+            parsedResponse = JSON.parse(fixedJson);
+          } catch (fixError) {
+            console.error("Fixed JSON parse also failed:", fixError.message);
+            
+            // Last resort - try to extract recipes using regex
+            console.log("Falling back to regex extraction");
+            throw new Error("JSON parsing failed, using fallback recipes");
+          }
+        }
         
         // Try to extract recipes from various possible formats
         let recipes = [];
@@ -131,7 +137,7 @@ export async function POST(request: Request) {
           // Nested under 'recipes' key
           recipes = parsedResponse.recipes;
         } else if (parsedResponse.title && parsedResponse.ingredients) {
-          // Single recipe object
+          // Single recipe object 
           recipes = [parsedResponse];
         } else {
           // Look for any array property that might contain recipes
@@ -185,8 +191,8 @@ export async function POST(request: Request) {
               return {
                 id: ing.id || `${index + 1}`,
                 name: ing.name || `Ingredient ${index + 1}`,
-                amount: ing.amount || '',
-                unit: ing.unit || '',
+                amount: ing.amount || '1',
+                unit: ing.unit || 'portion',
                 available: !!ingredients.some((item: string) => 
                   item.toLowerCase().includes(ing.name.toLowerCase().split(' ')[0]) || 
                   ing.name.toLowerCase().includes(item.toLowerCase())
@@ -227,7 +233,7 @@ export async function POST(request: Request) {
               description: recipe.description || 'A delicious recipe using your ingredients.',
               prepTime: typeof recipe.prepTime === 'number' ? recipe.prepTime : 15,
               cookTime: typeof recipe.cookTime === 'number' ? recipe.cookTime : 30,
-              servings: typeof recipe.servings === 'number' ? recipe.servings : 2,
+              servings: typeof recipe.servings === 'number' ? recipe.servings : 4,
               skillLevel: recipe.skillLevel || 'beginner',
               ingredients: formattedIngredients,
               instructions: formattedInstructions,
@@ -343,17 +349,17 @@ function createFallbackRecipe(ingredients: string[], index: number, skillLevel: 
     ingredients: ingredients.map((ing, idx) => ({
       id: `${idx + 1}`,
       name: ing,
-      amount: 'as needed',
-      unit: '',
+      amount: '1',
+      unit: 'portion',
       available: true,
       essential: true
     })),
     instructions: [
-      { id: 1, text: 'Prepare all ingredients by washing and cutting as needed.', safetyNote: null },
-      { id: 2, text: 'Heat a pan over medium heat with a little oil.', safetyNote: null },
-      { id: 3, text: 'Add all ingredients and cook until done, stirring occasionally.', safetyNote: 'Make sure to cook thoroughly, especially protein ingredients.' },
-      { id: 4, text: 'Season with salt and pepper to taste.', safetyNote: null },
-      { id: 5, text: 'Serve immediately.', safetyNote: null }
+      { id: 1, text: 'Prepare all ingredients by washing and cutting as needed.' },
+      { id: 2, text: 'Heat a pan over medium heat with a little oil.' },
+      { id: 3, text: 'Add all ingredients and cook until done, stirring occasionally.' },
+      { id: 4, text: 'Season with salt and pepper to taste.' },
+      { id: 5, text: 'Serve immediately.' }
     ],
     allergyInfo: {
       safe: [],

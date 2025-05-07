@@ -1,3 +1,4 @@
+// app/recipe/[id]/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,12 +9,16 @@ import Header from '../../../components/layout/Header';
 import { useAuth } from '../../../context/AuthContext';
 
 export default function RecipeDetailPage({ params }: { params: { id: string } }) {
+  // We'll use a simpler approach that works with the current Next.js but is also future-compatible
+  // Directly accessing params.id for now, but in a way that can be updated later
+  const recipeId = params.id;
   const router = useRouter();
   const { user, isAuthenticated, saveRecipe, removeRecipe } = useAuth();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ingredients');
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
+  const [servings, setServings] = useState(2);
   const [isSaved, setIsSaved] = useState(false);
   
   useEffect(() => {
@@ -26,11 +31,12 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         if (storedRecipes) {
           try {
             const allRecipes = JSON.parse(storedRecipes);
-            const foundRecipe = allRecipes.find((r: Recipe) => r.id === params.id);
+            const foundRecipe = allRecipes.find((r: Recipe) => r.id === recipeId);
              
             if (foundRecipe) {
               console.log("Found recipe in session storage:", foundRecipe.title);
               setRecipe(foundRecipe);
+              setServings(foundRecipe.servings || 2);
               setLoading(false);
               return;
             }
@@ -42,11 +48,12 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         // If not in sessionStorage, fetch from Firestore
         try {
           const { getRecipeById } = await import('../../../lib/api');
-          const fetchedRecipe = await getRecipeById(params.id);
+          const fetchedRecipe = await getRecipeById(recipeId);
           
           if (fetchedRecipe) {
             console.log("Found recipe in Firestore:", fetchedRecipe.title);
             setRecipe(fetchedRecipe);
+            setServings(fetchedRecipe.servings || 2);
             setLoading(false);
             return;
           }
@@ -56,11 +63,12 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         
         // Try direct API call as a last resort
         try {
-          console.log("Fetching recipe from API:", params.id);
-          const response = await fetch(`/api/recipes/${params.id}`);
+          console.log("Fetching recipe from API:", recipeId);
+          const response = await fetch(`/api/recipes/${recipeId}`);
           if (response.ok) {
             const apiRecipe = await response.json();
             setRecipe(apiRecipe);
+            setServings(apiRecipe.servings || 2);
             setLoading(false);
             return;
           }
@@ -68,7 +76,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           console.error("API fetch error:", apiError);
         }
         
-        console.error("Recipe not found:", params.id);
+        console.error("Recipe not found:", recipeId);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching recipe:', error);
@@ -77,7 +85,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     };
     
     fetchRecipe();
-  }, [params.id]);
+  }, [recipeId]);
   
   // Check if recipe is saved in user's collection
   useEffect(() => {
@@ -120,6 +128,12 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     }
   };
   
+  // Function to adjust servings
+  const adjustServings = (amount: number) => {
+    const newServings = Math.max(1, servings + amount);
+    setServings(newServings);
+  };
+  
   // Function to determine tab styles
   const getTabStyle = (tab: string) => {
     return activeTab === tab
@@ -149,11 +163,9 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       <div className="flex flex-col min-h-screen bg-gray-50">
         <Header title="Recipe Details" />
         <div className="flex-grow flex items-center justify-center">
-          <div className="text-center bg-white p-8 rounded-lg shadow-md max-w-md">
+          <div className="text-center">
             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-mise-500 border-opacity-50 mx-auto mb-4"></div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Loading Recipe</h2>
-            <p className="text-gray-600">Loading recipe details...</p>
-            <p className="text-sm text-gray-500 mt-2">This will only take a moment</p>
+            <p className="text-lg text-gray-600">Loading recipe details...</p>
           </div>
         </div>
       </div>
@@ -292,8 +304,24 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           {/* Ingredients Tab */}
           {activeTab === 'ingredients' && (
             <div>
-              <div className="mb-4">
-                <h3 className="text-xl font-bold text-gray-800">Ingredients</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-gray-800">Ingredients ({servings} servings)</h3>
+                <div className="flex items-center">
+                  <button 
+                    className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-l-md"
+                    onClick={() => adjustServings(-1)}
+                    disabled={servings <= 1}
+                  >
+                    -
+                  </button>
+                  <span className="px-3 py-1 text-sm bg-white border-t border-b border-gray-300">{servings}</span>
+                  <button 
+                    className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-r-md"
+                    onClick={() => adjustServings(1)}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               
               <div className="space-y-2 mb-6">
@@ -318,9 +346,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
                         )}
                       </div>
                       <span className={selectedIngredients.includes(ingredient.id) ? 'line-through text-gray-500' : ''}>
-                        {ingredient.amount && ingredient.unit ? 
-                          `${ingredient.name} (${ingredient.amount} ${ingredient.unit})` : 
-                          ingredient.name}
+                        {ingredient.name}
                       </span>
                     </div>
                     {getIngredientBadge(ingredient)}
@@ -336,7 +362,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
               <h3 className="text-xl font-bold text-gray-800 mb-4">Step-by-Step Instructions</h3>
               <div className="space-y-6">
                 {recipe.instructions && recipe.instructions.map((step, index) => (
-                  <div key={step.id || index} className="flex">
+                  <div key={step.id} className="flex">
                     <div className="w-8 h-8 rounded-full bg-mise-500 text-white flex items-center justify-center flex-shrink-0 mt-1">
                       {index + 1}
                     </div>
